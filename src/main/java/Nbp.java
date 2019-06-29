@@ -118,11 +118,11 @@ public class Nbp {
         return sb;
     }
     private static String getCorrectDate(LocalDate date){
-        //  if date falls id SUNDAY , we back two days - to friday
+        //  if date falls in SUNDAY , we back two days - to friday
         if(date.getDayOfWeek() == DayOfWeek.SUNDAY){
             date = date.minusDays(2);
         }
-        // if date falls is SATURDAY, we bac one day - to friday
+        // if date falls in SATURDAY, we back one day - to friday
         if(date.getDayOfWeek() == DayOfWeek.SATURDAY){
             date = date.minusDays(1);
         }
