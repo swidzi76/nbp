@@ -3,8 +3,13 @@ import com.google.gson.Gson;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.URL;
 import java.net.URLConnection;
+import java.sql.Date;
+import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -29,10 +34,13 @@ import java.util.List;
 //        W takiej sytuacji nie ma zadnego sensu w tworzeniu `new ExchangeRate()`
 //        przed pętla - ta wartośc i tak nie ma żadnego znaczenia.
 //        Możesz zostawić ją pustą (deklaracja `ExchangeRate exchangeRate` bez przypisania wartosci) lub ustawić na `null`.
-//        7) `for (String s : currency) {` zamiast `s` przydałaby się wartościowa nazwa`. Np. `currency`, a lista nazwana `currencies`
-//8) Zamiast `(rate == TypeOfRate.BUYING) ?` byłoby bardziej czytelnie zastosować pełnego ifa albo `switch`a. Tehcnicznie jest poprawnie, ale trudno się czyta. A switch znacznie by nam to poprawił (pod wzgledem czytelnosci)
-//9) `getExchangeRateForDate` i `getAverageExchangeRate` są bardzo podobne. Może dałoby się je jakoś sprowadzić do jednej metody?
-//10) Połowa `getCorrectDate` bardzo ładnie, a druga połowa strasznie na piechotę! Użyj tego z formatem `yyyy-MM-dd`: http://tutorials.jenkov.com/java-internationalization/simpledateformat.html
+// OK ----------->7) `for (String s : currency) {` zamiast `s` przydałaby się wartościowa nazwa`. Np. `currency`, a lista nazwana `currencies`
+// OK ----------->8) Zamiast `(rate == TypeOfRate.BUYING) ?`
+//          byłoby bardziej czytelnie zastosować pełnego ifa albo `switch`a.
+//          Tehcnicznie jest poprawnie, ale trudno się czyta.
+//          A switch znacznie by nam to poprawił (pod wzgledem czytelnosci)
+// OK ----------> 9) `getExchangeRateForDate` i `getAverageExchangeRate` są bardzo podobne. Może dałoby się je jakoś sprowadzić do jednej metody?
+// OK ----------> 10) Połowa `getCorrectDate` bardzo ładnie, a druga połowa strasznie na piechotę! Użyj tego z formatem `yyyy-MM-dd`: http://tutorials.jenkov.com/java-internationalization/simpledateformat.html
 //11) `private static double roundTo(double value, int digits){` - formatowanie liczby możemy zrobić w ładnym stylu - tak, jak jest opisane w internecie: https://stackoverflow.com/questions/153724/how-to-round-a-number-to-n-decimal-places-in-java
 //12) Ogółem podoba mi się Twoje rozbijanie rzeczy na metody - fajny masz styl :slightly_smiling_face:
 //----------------------------------------------------------------------------------------
@@ -64,7 +72,7 @@ public class Nbp {
         System.out.println(" KURSY SPRZEDAŻY I KUPNA  - AKTUALNE");
         ExchangeRate exchangeRate = new ExchangeRate();
         for (String currency : currencies) {
-            exchangeRate = getExchangeRate(currency);
+            exchangeRate = getActualExchangeRate(currency);
             System.out.println(currency + " : " + " KUPNO : " + exchangeRate.rates[0].bid
                     + " SPRZEDAŻ : " + exchangeRate.rates[0].ask);
         }
@@ -99,9 +107,11 @@ public class Nbp {
     }
     public static double exchangePlnFor(String currency, String dateRate, double valuePln, TypeOfRate rate) throws IOException {
         ExchangeRate exchangeRate = getExchangeRateForDate(currency, dateRate);
-        double temp = (rate == TypeOfRate.BUYING) ? valuePln / exchangeRate.rates[0].bid :
-                valuePln / exchangeRate.rates[0].ask;
-        return roundTo(temp,4);
+        if(rate == TypeOfRate.BUYING){
+            return roundTo((valuePln / exchangeRate.rates[0].bid),4);
+        }else{
+            return roundTo((valuePln / exchangeRate.rates[0].ask),4);
+        }
     }
     public static double exchangeToPln(String currency, String dateRate, double valueCurrency, TypeOfRate rate) throws IOException {
         ExchangeRate exchangeRate = getExchangeRateForDate(currency, dateRate);
@@ -114,21 +124,25 @@ public class Nbp {
         double temp = valuePln / getAverageExchangeRate(currency).rates[0].mid;
         return roundTo(temp, 4);
     }
+    public static ExchangeRate getActualExchangeRate(String currency) throws IOException {
+        return getExchangeRateForDate(currency, "");
+    }
+    ///////
+
     public static ExchangeRate getExchangeRateForDate(String currency, String date) throws IOException {
         StringBuilder sb = getJsonFromNbp(currency, "c",date);
         Gson gson = new Gson();
         ExchangeRate exchangeRate = gson.fromJson(sb.toString(), ExchangeRate.class);
         return exchangeRate;
     }
-    public static ExchangeRate getExchangeRate(String currency) throws IOException {
-        return getExchangeRateForDate(currency, "");
-    }
+    //////
     public static ExchangeAverageRate getAverageExchangeRate(String currency) throws IOException {
         StringBuilder sb = getJsonFromNbp(currency, "a", "");
         Gson gson = new Gson();
         ExchangeAverageRate exchangeAverageRate= gson.fromJson(sb.toString(), ExchangeAverageRate.class);
         return exchangeAverageRate;
     }
+
     private static StringBuilder getJsonFromNbp(String currency, String table, String date) throws IOException {
         final URL url = new URL("http://api.nbp.pl/api/exchangerates/rates/"+
                 table.toLowerCase()+"/"+currency.toLowerCase()+"/"+date+"/");
@@ -153,13 +167,13 @@ public class Nbp {
         if(date.getDayOfWeek() == DayOfWeek.SATURDAY){
             date = date.minusDays(1);
         }
-        // in sent string month and day must by two char length - we add "0" when < 10
-        String  year = "" + date.getYear();
-        String month = (date.getMonthValue() < 10) ? "0"+date.getMonthValue() : ""+date.getMonthValue();
-        String day = (date.getDayOfMonth() < 10) ? "0"+date.getDayOfMonth() : ""+date.getDayOfMonth();
-        return year+"-"+month+"-"+day;
+
+        String pattern = "yyyy-MM-dd";
+        SimpleDateFormat simpleDateFormat = new SimpleDateFormat(pattern);
+        return simpleDateFormat.format(Date.valueOf(date));
     }
-    private static double roundTo(double value, int digits){
-        return Math.round(value * Math.pow(10,digits)) / Math.pow(10,digits);
+    public static double roundTo(double value, int digits){
+        BigDecimal bd = new BigDecimal(value).setScale(digits, RoundingMode.HALF_EVEN);
+        return bd.doubleValue();
     }
 }
